@@ -1,6 +1,6 @@
 #include <algorithm>
+#include <charconv>
 #include <iostream>
-#include <limits>
 #include <string>
 #include <vector>
 
@@ -22,13 +22,30 @@ public:
     }
 };
 
-void clearInputStream() {
-    std::cin.clear();
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-}
-
 bool isBlank(const std::string& str) {
     return str.find_first_not_of(" \t\r\n") == std::string::npos;
+}
+
+std::string trim(const std::string& str) {
+    size_t first = str.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+        return "";
+    }
+    size_t last = str.find_last_not_of(" \t\r\n");
+    return str.substr(first, last - first + 1);
+}
+
+bool parseStrictInt(const std::string& input, int& outValue) {
+    std::string trimmed = trim(input);
+    if (trimmed.empty()) {
+        return false;
+    }
+
+    const char* begin = trimmed.data();
+    const char* end = trimmed.data() + trimmed.size();
+    auto [ptr, ec] = std::from_chars(begin, end, outValue);
+
+    return ec == std::errc() && ptr == end;
 }
 
 void printMenu() {
@@ -43,32 +60,38 @@ void printMenu() {
     std::cout << "Select an option: ";
 }
 
-void addBook(std::vector<Book>& catalog) {
+bool addBook(std::vector<Book>& catalog) {
     std::string title;
     std::cout << "Enter book title: ";
-    std::getline(std::cin, title);
+    if (!std::getline(std::cin, title)) {
+        return false;
+    }
 
     if (isBlank(title)) {
         std::cout << "Error: Book title cannot be empty. Book was not added.\n";
-        return;
+        return true;
+    }
+
+    std::string yearInput;
+    std::cout << "Enter publication year: ";
+    if (!std::getline(std::cin, yearInput)) {
+        return false;
     }
 
     int year = 0;
-    std::cout << "Enter publication year: ";
-    if (!(std::cin >> year)) {
-        std::cout << "Error: Invalid input for year. Book was not added.\n";
-        clearInputStream();
-        return;
+    if (!parseStrictInt(yearInput, year)) {
+        std::cout << "Error: Invalid integer for year. Book was not added.\n";
+        return true;
     }
-    clearInputStream();
 
     if (year <= 0) {
         std::cout << "Error: Publication year must be greater than 0. Book was not added.\n";
-        return;
+        return true;
     }
 
-    catalog.emplace_back(title, year);
+    catalog.emplace_back(trim(title), year);
     std::cout << "Book added successfully.\n";
+    return true;
 }
 
 void showBooks(const std::vector<Book>& catalog) {
@@ -108,19 +131,21 @@ void sortByYearDescending(std::vector<Book>& catalog) {
     std::cout << "Catalog sorted by year (descending).\n";
 }
 
-void searchBooks(const std::vector<Book>& catalog) {
+bool searchBooks(const std::vector<Book>& catalog) {
     if (catalog.empty()) {
         std::cout << "Catalog is empty. Nothing to search.\n";
-        return;
+        return true;
     }
 
     std::string query;
     std::cout << "Enter title or part of title to search: ";
-    std::getline(std::cin, query);
+    if (!std::getline(std::cin, query)) {
+        return false;
+    }
 
     if (isBlank(query)) {
         std::cout << "Error: Search query cannot be empty.\n";
-        return;
+        return true;
     }
 
     bool found = false;
@@ -136,47 +161,59 @@ void searchBooks(const std::vector<Book>& catalog) {
     if (!found) {
         std::cout << "Nothing found.\n";
     }
+    return true;
 }
 
-void countBooksAfterYear(const std::vector<Book>& catalog) {
+bool countBooksAfterYear(const std::vector<Book>& catalog) {
     if (catalog.empty()) {
         std::cout << "Catalog is empty. Count is 0.\n";
-        return;
+        return true;
+    }
+
+    std::string yearInput;
+    std::cout << "Enter year Y: ";
+    if (!std::getline(std::cin, yearInput)) {
+        return false;
     }
 
     int targetYear = 0;
-    std::cout << "Enter year Y: ";
-    if (!(std::cin >> targetYear)) {
-        std::cout << "Error: Invalid input for year.\n";
-        clearInputStream();
-        return;
+    if (!parseStrictInt(yearInput, targetYear)) {
+        std::cout << "Error: Invalid integer for year.\n";
+        return true;
     }
-    clearInputStream();
 
     auto count = std::count_if(catalog.begin(), catalog.end(), [targetYear](const Book& b) {
         return b.getYear() > targetYear;
     });
 
     std::cout << "Books published strictly after " << targetYear << ": " << count << "\n";
+    return true;
 }
 
 int main() {
     std::vector<Book> catalog;
-    int choice = -1;
+    std::string choiceInput;
 
     while (true) {
         printMenu();
 
-        if (!(std::cin >> choice)) {
+        if (!std::getline(std::cin, choiceInput)) {
+            std::cout << "\nEnd of input reached. Exiting program.\n";
+            return 0;
+        }
+
+        int choice = -1;
+        if (!parseStrictInt(choiceInput, choice)) {
             std::cout << "Error: Invalid menu command. Please enter a number from 0 to 6.\n";
-            clearInputStream();
             continue;
         }
-        clearInputStream();
 
         switch (choice) {
             case 1:
-                addBook(catalog);
+                if (!addBook(catalog)) {
+                    std::cout << "\nEnd of input reached. Exiting program.\n";
+                    return 0;
+                }
                 break;
             case 2:
                 showBooks(catalog);
@@ -188,10 +225,16 @@ int main() {
                 sortByYearDescending(catalog);
                 break;
             case 5:
-                searchBooks(catalog);
+                if (!searchBooks(catalog)) {
+                    std::cout << "\nEnd of input reached. Exiting program.\n";
+                    return 0;
+                }
                 break;
             case 6:
-                countBooksAfterYear(catalog);
+                if (!countBooksAfterYear(catalog)) {
+                    std::cout << "\nEnd of input reached. Exiting program.\n";
+                    return 0;
+                }
                 break;
             case 0:
                 std::cout << "Exiting program. Goodbye!\n";
